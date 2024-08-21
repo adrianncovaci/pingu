@@ -72,18 +72,18 @@ impl WebsiteMonitor {
         }
     }
 
-    pub async fn get_status(&self) -> Vec<serde_json::Value> {
+    pub async fn get_status(&self) -> Vec<Website> {
         let websites = self.websites.read().await;
         websites
             .values()
             .map(|w| {
-                let uptime = (w.successful_checks as f64 / w.total_checks as f64) * 100.0;
-                serde_json::json!({
-                    "url": w.url,
-                    "is_up": w.is_up,
-                    "uptime_percentage": format!("{:.2}%", uptime),
-                    "last_check": w.last_check.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
-                })
+                Website {
+                    url: w.url.clone(),
+                    is_up: w.is_up,
+                    last_check: w.last_check,
+                    total_checks: w.total_checks,
+                    successful_checks: w.successful_checks
+                }
             })
             .collect()
     }
