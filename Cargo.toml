@@ -4,6 +4,7 @@ version = "0.1.2"
 edition = "2021"
 description = "A lightweight Rust library for monitoring website uptime and status"
 license = "MIT"
+repository = "https://github.com/adrianncovaci/pingu"
 
 [dependencies]
 reqwest = "0.12"
