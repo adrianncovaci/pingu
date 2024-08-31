@@ -7,11 +7,17 @@ use tokio::sync::RwLock;
 use tokio::time::interval;
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct CheckStatus {
+    pub is_up: bool,
+    pub last_check: SystemTime,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Website {
     pub url: String,
     pub last_check: SystemTime,
     pub is_up: bool,
-    pub total_checks: u64,
+    pub total_checks: Vec<CheckStatus>,
     pub successful_checks: u64,
 }
 
@@ -39,7 +45,7 @@ impl WebsiteMonitor {
                 url,
                 last_check: SystemTime::now(),
                 is_up: false,
-                total_checks: 0,
+                total_checks: vec![],
                 successful_checks: 0,
             },
         );
@@ -54,7 +60,10 @@ impl WebsiteMonitor {
             .await
         {
             Ok(response) => response.status().is_success(),
-            Err(_) => false,
+            Err(err) => {
+                eprintln!("err = {:?}", err);
+                false
+            }
         }
     }
 
@@ -65,7 +74,10 @@ impl WebsiteMonitor {
             let is_up = self.check_website(&website.url).await;
             website.is_up = is_up;
             website.last_check = SystemTime::now();
-            website.total_checks += 1;
+            website.total_checks.push(CheckStatus {
+                is_up,
+                last_check: website.last_check,
+            });
             if is_up {
                 website.successful_checks += 1;
             }
@@ -76,14 +88,12 @@ impl WebsiteMonitor {
         let websites = self.websites.read().await;
         websites
             .values()
-            .map(|w| {
-                Website {
-                    url: w.url.clone(),
-                    is_up: w.is_up,
-                    last_check: w.last_check,
-                    total_checks: w.total_checks,
-                    successful_checks: w.successful_checks
-                }
+            .map(|w| Website {
+                url: w.url.clone(),
+                is_up: w.is_up,
+                last_check: w.last_check,
+                total_checks: w.total_checks.clone(),
+                successful_checks: w.successful_checks,
             })
             .collect()
     }
