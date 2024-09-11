@@ -1,6 +1,6 @@
 [package]
 name = "pingu"
-version = "0.1.2"
+version = "0.1.4"
 edition = "2021"
 description = "A lightweight Rust library for monitoring website uptime and status"
 license = "MIT"
