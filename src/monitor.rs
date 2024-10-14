@@ -7,17 +7,26 @@ use tokio::time::interval;
 
 use crate::website::{Check, CheckStatus, ResponseDetails, Website};
 
+#[cfg(feature = "email_notifications")]
+use crate::website::FailReport;
+#[cfg(feature = "email_notifications")]
+use std::error::Error;
+
 #[derive(Clone)]
 pub struct WebsiteMonitor {
     websites: Arc<RwLock<HashMap<String, Website>>>,
     client: Client,
+    #[cfg(feature = "email_notifications")]
+    notification_email: String,
 }
 
-impl Default for WebsiteMonitor {
-    fn default() -> Self {
+impl WebsiteMonitor {
+    pub fn new(#[cfg(feature = "email_notifications")] notification_email: String) -> Self {
         WebsiteMonitor {
             websites: Arc::new(RwLock::new(HashMap::new())),
             client: Client::new(),
+            #[cfg(feature = "email_notifications")]
+            notification_email,
         }
     }
 }
@@ -119,5 +128,52 @@ impl WebsiteMonitor {
                 monitor.update_website_status().await;
             }
         });
+    }
+
+    #[cfg(feature = "email_notifications")]
+    pub async fn send_email_notification(
+        &self,
+        fail_report: FailReport,
+    ) -> Result<(), Box<dyn Error>> {
+        use lettre::{
+            message::{header::ContentType, Mailbox},
+            transport::smtp::authentication::Credentials,
+            AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport, Message,
+        };
+
+        let to_email: Mailbox = self.notification_email.parse()?;
+
+        let email = Message::builder()
+            .from(
+                "Website Monitor <website_tracker@tracker.com>"
+                    .parse()
+                    .unwrap(),
+            )
+            .to(to_email)
+            .subject(&format!("{} is down!", fail_report.url))
+            .header(ContentType::TEXT_PLAIN)
+            .body(format!(
+                "The website {} is down with status code {}. Error message: {} At: {:?}",
+                fail_report.url,
+                fail_report.status_code,
+                fail_report.error_message,
+                fail_report.timestamp
+            ))?;
+
+        let creds = Credentials::new("smtp_username".to_owned(), "smtp_password".to_owned());
+
+        // Open a remote connection to gmail
+        let mailer: AsyncSmtpTransport<AsyncStd1Executor> =
+            AsyncSmtpTransport::<AsyncStd1Executor>::relay("smtp.gmail.com")
+                .unwrap()
+                .credentials(creds)
+                .build();
+
+        match mailer.send(email).await {
+            Ok(_) => println!("Email sent successfully!"),
+            Err(e) => panic!("Could not send email: {e:?}"),
+        }
+
+        Ok(())
     }
 }

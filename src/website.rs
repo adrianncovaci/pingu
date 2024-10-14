@@ -41,3 +41,11 @@ pub struct Website {
     pub total_checks: Vec<Check>,
     pub successful_checks: u64,
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct FailReport {
+    pub url: String,
+    pub status_code: u16,
+    pub error_message: String,
+    pub timestamp: SystemTime,
+}

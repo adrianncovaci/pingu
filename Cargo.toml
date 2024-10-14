@@ -6,9 +6,12 @@ description = "A lightweight Rust library for monitoring website uptime and stat
 license = "MIT"
 repository = "https://github.com/adrianncovaci/pingu"
 
+[features]
+email_notifications = [ "dep:lettre" ]
+
 [dependencies]
 reqwest = "0.12"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-
+lettre = { default_features = false, version = "0.11", optional = true, features = ["async-std1", "smtp-transport", "builder", "tokio1-rustls-tls", "async-std1-rustls-tls"] }
