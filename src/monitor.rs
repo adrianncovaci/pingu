@@ -8,6 +8,8 @@ use tokio::time::interval;
 use crate::website::{Check, CheckStatus, ResponseDetails, Website};
 
 #[cfg(feature = "email_notifications")]
+use crate::email_config::EmailConfig;
+#[cfg(feature = "email_notifications")]
 use crate::website::FailReport;
 #[cfg(feature = "email_notifications")]
 use std::error::Error;
@@ -17,16 +19,16 @@ pub struct WebsiteMonitor {
     websites: Arc<RwLock<HashMap<String, Website>>>,
     client: Client,
     #[cfg(feature = "email_notifications")]
-    notification_email: String,
+    email_config: EmailConfig,
 }
 
 impl WebsiteMonitor {
-    pub fn new(#[cfg(feature = "email_notifications")] notification_email: String) -> Self {
+    pub fn new(#[cfg(feature = "email_notifications")] email_config: EmailConfig) -> Self {
         WebsiteMonitor {
             websites: Arc::new(RwLock::new(HashMap::new())),
             client: Client::new(),
             #[cfg(feature = "email_notifications")]
-            notification_email,
+            email_config,
         }
     }
 }
@@ -62,6 +64,16 @@ impl WebsiteMonitor {
                 if !response.status().is_success() {
                     let status_code = response.status().as_u16();
                     let error_message = response.text().await.unwrap();
+                    #[cfg(feature = "email_notifications")]
+                    {
+                        let fail_report = FailReport {
+                            url: url.to_string(),
+                            status_code,
+                            error_message: error_message.clone(),
+                            timestamp: SystemTime::now(),
+                        };
+                        self.send_email_notification(fail_report).await.unwrap();
+                    }
                     CheckStatus::Down {
                         status_code,
                         error_message,
@@ -82,6 +94,16 @@ impl WebsiteMonitor {
             }
             Err(err) => {
                 eprintln!("err = {:?}", err);
+                #[cfg(feature = "email_notifications")]
+                {
+                    let fail_report = FailReport {
+                        url: url.to_string(),
+                        status_code: u16::MAX,
+                        error_message: err.to_string(),
+                        timestamp: SystemTime::now(),
+                    };
+                    self.send_email_notification(fail_report).await.unwrap();
+                }
                 CheckStatus::Down {
                     status_code: 0,
                     error_message: err.to_string(),
@@ -141,16 +163,15 @@ impl WebsiteMonitor {
             AsyncSmtpTransport, AsyncStd1Executor, AsyncTransport, Message,
         };
 
-        let to_email: Mailbox = self.notification_email.parse()?;
+        let to_email: Mailbox = self.email_config.to_email.parse()?;
 
         let email = Message::builder()
-            .from(
-                "Website Monitor <website_tracker@tracker.com>"
-                    .parse()
-                    .unwrap(),
-            )
+            .from(self.email_config.from_email.clone().parse().unwrap())
             .to(to_email)
-            .subject(&format!("{} is down!", fail_report.url))
+            .subject(&format!(
+                "{} {} is down!",
+                self.email_config.subject, fail_report.url
+            ))
             .header(ContentType::TEXT_PLAIN)
             .body(format!(
                 "The website {} is down with status code {}. Error message: {} At: {:?}",
@@ -160,18 +181,21 @@ impl WebsiteMonitor {
                 fail_report.timestamp
             ))?;
 
-        let creds = Credentials::new("smtp_username".to_owned(), "smtp_password".to_owned());
+        let creds = Credentials::new(
+            self.email_config.smtp_username.clone(),
+            self.email_config.smtp_password.clone(),
+        );
 
         // Open a remote connection to gmail
         let mailer: AsyncSmtpTransport<AsyncStd1Executor> =
-            AsyncSmtpTransport::<AsyncStd1Executor>::relay("smtp.gmail.com")
+            AsyncSmtpTransport::<AsyncStd1Executor>::relay(&self.email_config.smtp_relay.clone())
                 .unwrap()
                 .credentials(creds)
                 .build();
 
         match mailer.send(email).await {
             Ok(_) => println!("Email sent successfully!"),
-            Err(e) => panic!("Could not send email: {e:?}"),
+            Err(e) => eprintln!("Could not send email: {e:?}"),
         }
 
         Ok(())

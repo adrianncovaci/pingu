@@ -1,3 +1,5 @@
+#[cfg(feature = "email_notifications")]
+pub mod email_config;
 pub mod monitor;
 pub mod website;
 
